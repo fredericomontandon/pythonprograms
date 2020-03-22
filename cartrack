@@ -1,0 +1,79 @@
+import cv2
+import numpy as np
+
+capt = cv2.VideoCapture('imagens/traffic.mp4') #abre video ou camera
+
+#bgd = cv2.createBackgroundSubtractorMOG2(history = 120,varThreshold=50,detectShadows=True) #chama sub classe com algoritmo KNN para segmentar o for diferente do fundo
+bgd = cv2.createBackgroundSubtractorKNN(history=1, detectShadows=False)
+ret,frame1= capt.read()
+
+frame1 = cv2.resize(frame1,None, fx=.5, fy=.5)
+
+cv2.imshow('Original',frame1)
+
+
+while True:
+
+	ret, image = capt.read()
+
+	image = cv2.resize(image,None, fx=.5, fy=.5)
+
+	if not ret or image is None:
+		exit()
+
+
+	black = np.zeros_like(image) #cria uma matriz do tamanho de image porem com valores zeros
+
+	ROI = black.copy() #ROI é a copia da matriz black
+
+	ROI[150:,300:] = image[150:,300:] #ROI(region of interest) é um pedaço da imagem 
+
+	cinza = cv2.cvtColor(ROI, cv2.COLOR_BGR2GRAY) #muda de BGR para cinza pois KNN so trabalha em imagem de dois canais
+	cinza = cv2.equalizeHist(cinza) #equaliza o histograma
+	cinza = cv2.blur(cinza,(3,3)) #aplica filtro blur para redução de ruído
+
+	fgmask = bgd.apply(cinza) #aplica uma mascara na qual tudo que não for igual ao fundo sera destacado
+
+	kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+	closing = cv2.morphologyEx(fgmask, cv2.MORPH_CLOSE, kernel)
+	opening = cv2.morphologyEx(closing, cv2.MORPH_OPEN, kernel)
+	dilation = cv2.dilate(opening, kernel, iterations = 2)
+
+	fgmask = dilation
+
+
+	contours, hierarchy = cv2.findContours(fgmask, cv2.RETR_TREE, cv2.CHAIN_APPROX_TC89_L1) # cria os contornos na mascara
+
+	if len(contours)>0:
+		for (i,n) in enumerate(contours): 
+			(x,y,w,h) = cv2.boundingRect(n) #cria os os retangulos dos contornos
+			print('w',w,'h',h,'x',x,'y',y)
+			cv2.drawContours(fgmask, contours, 0, (255,255,255), 5) #desenha os contornos na imagem preta
+
+			if w >= 60 and h >= 60:
+				cv2.rectangle(image, (x,y), (x+w,y+h), (0,255,0),2, cv2.LINE_AA) #desena os retangulos
+
+				x1 = int(w/2)
+				y1 = int(h/2)
+
+				cx = x+x1
+				cy = y+y1
+
+				centroid = (cx,cy)
+				print(centroid)
+			
+				cv2.circle(image, centroid, 1, (0, 0, 255), 5)
+				cv2.line(image, (0,cy), (0,cy), (0, 0, 255), 2)
+				#counter = 0
+				#if centroid > (300,100) and centroid < (700,700):
+				#	counter = counter + 1
+				#	print(counter)
+				#cv2.putText(image,'Carros:' +str(counter), (0,100), cv2.FONT_HERSHEY_SIMPLEX,.8,(0,0,255),1,cv2.LINE_AA)
+		
+
+
+	cv2.imshow('cinza',cinza)
+	cv2.imshow('mask',fgmask)
+	cv2.imshow('imagem',image)
+	cv2.imshow('ROI',ROI)
+	k = cv2.waitKey(1)
